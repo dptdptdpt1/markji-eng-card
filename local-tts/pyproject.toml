@@ -1,0 +1,17 @@
+[project]
+name = "work-english-voice-comparison"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "en-core-web-sm",
+    "misaki[en]==0.9.4",
+    "mlx-audio==0.6.6",
+]
+
+[[tool.uv.index]]
+name = "tuna"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[tool.uv.sources]
+en-core-web-sm = { path = "en_core_web_sm-3.8.0-py3-none-any.whl" }

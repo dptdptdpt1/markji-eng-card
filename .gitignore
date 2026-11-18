@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+/导出文件/
+/local-tts/.venv/
+/local-tts/models/
+/local-tts/espeak-ng-data/
+/local-tts/*-cache/
+/local-tts/*.whl
