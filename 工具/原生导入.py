@@ -12,6 +12,7 @@ mapping = json.loads(mapping_path.read_text())
 
 
 def audio_name(english):
+    # 历史缓存键，不代表实际音色；新音频的模型与参数见音频/生成记录.json。
     return hashlib.sha256(("af_heart/1.0/" + english).encode()).hexdigest()[:24] + ".wav"
 
 

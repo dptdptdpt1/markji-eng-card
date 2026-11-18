@@ -1,9 +1,10 @@
-"""在现有本地 Kokoro 环境中运行。"""
+"""本地配音：陈述句和长问句随机 Heart/Fenrir，短问句 Qwen；复用已有音频。"""
 import hashlib
 import html
 import json
 import os
 from pathlib import Path
+import random
 import sqlite3
 import tempfile
 import time
@@ -28,7 +29,25 @@ import mlx.core as mx
 import numpy as np
 from mlx_audio.tts.utils import load_model
 
-model = load_model(runtime / "models/Kokoro-82M-bf16")
+models = {}
+qwen_instruction = (
+    'A young adult woman with a natural American English accent and a warm, clear voice. '
+    'Speak casually to a friend in an everyday conversation, at a normal pace, '
+    'with connected speech and natural reductions. Sound genuinely curious when asking '
+    'a question, with natural conversational question intonation appropriate to the '
+    'sentence. Keep the delivery relaxed and understated, not theatrical or like a narrator.'
+)
+
+
+def voice_settings(english):
+    # 按试听分组，20 词及以上为长问句；缩写按一个空格分隔词计。
+    if ("?" in english or "？" in english) and len(english.split()) < 20:
+        return "Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit", {
+            "instruct": qwen_instruction, "language": "English", "max_tokens": 512,
+        }
+    return "Kokoro-82M-bf16", {
+        "voice": random.choice(("af_heart", "am_fenrir")), "speed": 1.0, "lang_code": "a",
+    }
 
 
 def digest(value):
@@ -36,18 +55,35 @@ def digest(value):
 
 
 def audio_for(english):
+    # 保留历史缓存键，与原生导入的音频 ID 映射一致；实际模型见生成记录。
     filename = cache / (digest("af_heart/1.0/" + english)[:24] + ".wav")
     if not filename.exists():
+        model_name, settings = voice_settings(english)
+        if model_name not in models:
+            models[model_name] = load_model(runtime / "models" / model_name)
+        selected_model = models[model_name]
+        seed = 20261118
+        mx.random.seed(seed)
+        generate = (selected_model.generate_voice_design if "instruct" in settings
+                    else selected_model.generate)
         samples = []
-        for result in model.generate(text=english, voice="af_heart", speed=1.0, lang_code="a"):
+        for result in generate(text=english, **settings):
             mx.eval(result.audio)
             assert result.sample_rate == 24000
+            if "max_tokens" in settings:
+                assert result.token_count < settings["max_tokens"], f"音频可能被截断：{english}"
             samples.append(np.asarray(result.audio).reshape(-1))
         signal = np.concatenate(samples)
         assert np.isfinite(signal).all() and np.max(np.abs(signal)) > 0.02
+        assert 6000 < len(signal) < 480000
+        records_path = cache / "生成记录.json"
+        records = json.loads(records_path.read_text()) if records_path.exists() else {}
         with wave.open(str(filename), "wb") as stream:
             stream.setparams((1, 2, 24000, 0, "NONE", ""))
             stream.writeframes((np.clip(signal, -1, 1) * 32767).astype("<i2").tobytes())
+        records[filename.name] = {"english": english, "model": model_name,
+                                  "settings": settings, "seed": seed}
+        records_path.write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n")
     with wave.open(str(filename)) as stream:
         assert (stream.getnchannels(), stream.getsampwidth(), stream.getframerate()) == (1, 2, 24000)
         assert 6000 < stream.getnframes() < 480000
